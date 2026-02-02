@@ -1,54 +1,68 @@
 const express = require('express');
-const ytSearch = require('yt-search');
 const axios = require('axios');
+const qs = require('qs'); // Form data යැවීමට
+const ytSearch = require('yt-search');
 const app = express();
 
 const PORT = process.env.PORT || 8000;
 
-app.get('/', (req, res) => {
-    res.json({ status: 'API Online 🚀', endpoints: ['/ytdl', '/api/ytmp3'] });
-});
+app.get('/', (req, res) => res.json({ status: 'Custom Y2Mate Scraper Live!' }));
 
 app.get(['/ytdl', '/api/ytmp3'], async (req, res) => {
     const query = req.query.name;
-    if (!query) return res.status(400).json({ success: false, error: 'Query name is required' });
+    if (!query) return res.status(400).json({ error: 'සින්දුවේ නම ඇතුළත් කරන්න.' });
 
     try {
-        // 1. YouTube Search
+        // 1. YouTube සෙවීම
         const search = await ytSearch(query);
         const video = search.videos[0];
-        if (!video) return res.json({ success: false, message: 'Video not found' });
+        if (!video) return res.json({ success: false, message: 'වීඩියෝව හමු නොවීය.' });
 
-        // 2. Download Link එක ලබා ගැනීම (Stable Y2Mate API)
-        // අපි මෙතනදී api.giftedtech.my.id පාවිච්චි කරමු, ඒක ගොඩක් ස්ථාවරයි.
-        const dlRes = await axios.get(`https://api.giftedtech.my.id/api/download/dlmp3?url=${encodeURIComponent(video.url)}&apikey=gifted`);
-        
-        if (dlRes.data && dlRes.data.success) {
-            return res.json({
+        const videoUrl = video.url;
+
+        // 2. Y2Mate Analyze - වීඩියෝ ලින්ක් එක Y2Mate එකට දීලා ID එකක් ගන්නවා
+        const analyzeData = qs.stringify({
+            'k_query': videoUrl,
+            'k_page': 'home',
+            'hl': 'en',
+            'q_auto': '0'
+        });
+
+        const analyzeRes = await axios.post('https://www.y2mate.com/mates/en/analyzeV2/ajax', analyzeData, {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }
+        });
+
+        // 3. Y2Mate Convert - ලබාගත්ත ID එක පාවිච්චි කරලා MP3 ලින්ක් එක ඉල්ලනවා
+        // මෙහි 'fbtid' සහ 'k' අගයන් analyzeRes එකෙන් ලබාගන්නවා
+        const kValue = analyzeRes.data.links.mp3['mp3128'].k; 
+        const vidId = analyzeRes.data.vid;
+
+        const convertData = qs.stringify({
+            'vid': vidId,
+            'k': kValue
+        });
+
+        const convertRes = await axios.post('https://www.y2mate.com/mates/en/convertV2/index', convertData, {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }
+        });
+
+        // 4. අවසාන Download Link එක ලබා දීම
+        if (convertRes.data.status === 'ok') {
+            res.json({
                 success: true,
                 title: video.title,
                 thumbnail: video.thumbnail,
-                download_url: dlRes.data.result.download_url,
+                download_url: convertRes.data.dlink, // Y2Mate එකෙන් ලැබෙන සෘජු ලින්ක් එක
                 duration: video.timestamp
             });
         } else {
-            // Backup API - එකක් වැඩ නැති වුණොත් මේක බලනවා
-            const backupRes = await axios.get(`https://api.vreden.my.id/api/ytmp3?url=${encodeURIComponent(video.url)}`);
-            const dlUrl = backupRes.data.result.download.url || backupRes.data.result.url;
-            
-            return res.json({
-                success: true,
-                title: video.title,
-                thumbnail: video.thumbnail,
-                download_url: dlUrl,
-                duration: video.timestamp
-            });
+            throw new Error('Y2Mate Conversion Failed');
         }
 
     } catch (error) {
-        console.error("API Error:", error.message);
-        res.status(500).json({ success: false, error: 'Download servers are busy. Try again!' });
+        console.error(error.message);
+        res.status(500).json({ success: false, error: 'Y2Mate Scraper Error: ' + error.message });
     }
 });
 
-app.listen(PORT, () => console.log(`✅ Server is running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Scraper running on port ${PORT}`));
