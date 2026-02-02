@@ -6,38 +6,49 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 
 app.get('/', (req, res) => {
-    res.json({ status: 'API is Live! 🚀', message: 'Use /ytdl or /api/ytmp3' });
+    res.json({ status: 'API Online 🚀', endpoints: ['/ytdl', '/api/ytmp3'] });
 });
 
-// මෙන්න මේ Routes දෙකම දාන්න, එතකොට 404 එන්නේ නැහැ
-const downloadHandler = async (req, res) => {
+app.get(['/ytdl', '/api/ytmp3'], async (req, res) => {
     const query = req.query.name;
-    if (!query) return res.status(400).json({ error: 'නම ලබා දෙන්න.' });
+    if (!query) return res.status(400).json({ success: false, error: 'Query name is required' });
 
     try {
+        // 1. YouTube Search
         const search = await ytSearch(query);
         const video = search.videos[0];
-        if (!video) return res.json({ success: false, message: 'හමු නොවීය.' });
+        if (!video) return res.json({ success: false, message: 'Video not found' });
 
-        // y2mate සර්වර් පාවිච්චි කරන API එක
-        const resDl = await axios.get(`https://api.vreden.my.id/api/ytmp4?url=${encodeURIComponent(video.url)}`);
-        const downloadUrl = resDl.data.result.download.url || resDl.data.result.url;
-
-        res.json({
-            success: true,
-            title: video.title,
-            thumbnail: video.thumbnail,
-            download_url: downloadUrl,
-            videoId: video.videoId
-        });
+        // 2. Download Link එක ලබා ගැනීම (Stable Y2Mate API)
+        // අපි මෙතනදී api.giftedtech.my.id පාවිච්චි කරමු, ඒක ගොඩක් ස්ථාවරයි.
+        const dlRes = await axios.get(`https://api.giftedtech.my.id/api/download/dlmp3?url=${encodeURIComponent(video.url)}&apikey=gifted`);
+        
+        if (dlRes.data && dlRes.data.success) {
+            return res.json({
+                success: true,
+                title: video.title,
+                thumbnail: video.thumbnail,
+                download_url: dlRes.data.result.download_url,
+                duration: video.timestamp
+            });
+        } else {
+            // Backup API - එකක් වැඩ නැති වුණොත් මේක බලනවා
+            const backupRes = await axios.get(`https://api.vreden.my.id/api/ytmp3?url=${encodeURIComponent(video.url)}`);
+            const dlUrl = backupRes.data.result.download.url || backupRes.data.result.url;
+            
+            return res.json({
+                success: true,
+                title: video.title,
+                thumbnail: video.thumbnail,
+                download_url: dlUrl,
+                duration: video.timestamp
+            });
+        }
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, error: 'Server Error' });
+        console.error("API Error:", error.message);
+        res.status(500).json({ success: false, error: 'Download servers are busy. Try again!' });
     }
-};
+});
 
-app.get('/ytdl', downloadHandler);
-app.get('/api/ytmp3', downloadHandler); // බොට් එක මේක සර්ච් කළොත් දැන් වැඩ
-
-app.listen(PORT, () => console.log(`✅ API running on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Server is running on port ${PORT}`));
