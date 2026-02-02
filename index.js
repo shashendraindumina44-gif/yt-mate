@@ -1,83 +1,48 @@
 const express = require('express');
 const ytSearch = require('yt-search');
+const axios = require('axios');
+const qs = require('qs');
 const app = express();
 
 const PORT = process.env.PORT || 8000;
 
+// ලින්ක් එක වැඩද කියලා බලන්න බ්‍රවුසර් එකේ නිකම්ම ලෝඩ් කරලා බලන්න පුළුවන්
 app.get('/', (req, res) => {
-    res.send('TubeAPI Downloader is Running! 🚀');
+    res.send("<h1>Server is Live! 🚀</h1><p>Try: /ytdl?name=faded</p>");
 });
 
-app.get('/ytdl', async (req, res) => {
+app.get(['/ytdl', '/api/ytmp3'], async (req, res) => {
     const query = req.query.name;
-    if (!query) return res.status(400).json({ error: 'සින්දුවේ නම ලබා දෙන්න.' });
+    if (!query) return res.status(400).json({ error: 'සින්දුවේ නම දෙන්න.' });
 
     try {
-        // 1. YouTube සෙවීම
         const search = await ytSearch(query);
         const video = search.videos[0];
+        if (!video) return res.json({ success: false, message: 'හමු නොවීය.' });
 
-        if (!video) return res.json({ success: false, message: 'වීඩියෝව හමු නොවීය.' });
+        // Y2Mate Scraping Process
+        const analyzeRes = await axios.post('https://www.y2mate.com/mates/en/analyzeV2/ajax', qs.stringify({
+            k_query: video.url, k_page: 'home', hl: 'en', q_auto: '0'
+        }), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
 
-        // 2. TubeAPI එකට අදාළ ඩවුන්ලෝඩ් පේජ් එකේ ලින්ක් එක සැකසීම
-        // බොට් එක මේ ලින්ක් එක යැව්වම යූසර්ට ඒක ක්ලික් කරලා සින්දුව බාගත හැකියි.
-        const downloadPage = `https://tubeapi.org/button#${video.videoId}`;
+        const kValue = analyzeRes.data.links.mp3.mp3128.k;
+        const vidId = analyzeRes.data.vid;
+
+        const convertRes = await axios.post('https://www.y2mate.com/mates/en/convertV2/index', qs.stringify({
+            vid: vidId, k: kValue
+        }), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
 
         res.json({
             success: true,
             title: video.title,
-            thumbnail: video.thumbnail,
-            videoId: video.videoId,
-            download_url: downloadPage, // මෙතනදී අපි එවන්නේ TubeAPI එකේ ඩවුන්ලෝඩ් ලින්ක් එක
-            duration: video.timestamp,
-            author: video.author.name
+            download_url: convertRes.data.dlink,
+            thumbnail: video.thumbnail
         });
 
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, error: 'Server Error එකක් සිදු විය.' });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, error: "Y2Mate Error: " + e.message });
     }
 });
 
-app.listen(PORT, () => console.log(`✅ Server live on port ${PORT}`));const express = require('express');
-const ytSearch = require('yt-search');
-const app = express();
-
-const PORT = process.env.PORT || 8000;
-
-app.get('/', (req, res) => {
-    res.send('TubeAPI Downloader is Running! 🚀');
-});
-
-app.get('/ytdl', async (req, res) => {
-    const query = req.query.name;
-    if (!query) return res.status(400).json({ error: 'සින්දුවේ නම ලබා දෙන්න.' });
-
-    try {
-        // 1. YouTube සෙවීම
-        const search = await ytSearch(query);
-        const video = search.videos[0];
-
-        if (!video) return res.json({ success: false, message: 'වීඩියෝව හමු නොවීය.' });
-
-        // 2. TubeAPI එකට අදාළ ඩවුන්ලෝඩ් පේජ් එකේ ලින්ක් එක සැකසීම
-        // බොට් එක මේ ලින්ක් එක යැව්වම යූසර්ට ඒක ක්ලික් කරලා සින්දුව බාගත හැකියි.
-        const downloadPage = `https://tubeapi.org/button#${video.videoId}`;
-
-        res.json({
-            success: true,
-            title: video.title,
-            thumbnail: video.thumbnail,
-            videoId: video.videoId,
-            download_url: downloadPage, // මෙතනදී අපි එවන්නේ TubeAPI එකේ ඩවුන්ලෝඩ් ලින්ක් එක
-            duration: video.timestamp,
-            author: video.author.name
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, error: 'Server Error එකක් සිදු විය.' });
-    }
-});
-
-app.listen(PORT, () => console.log(`✅ Server live on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ API Server is running on port ${PORT}`));
